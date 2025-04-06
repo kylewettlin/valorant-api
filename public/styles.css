@@ -1,0 +1,126 @@
+:root {
+  --primary-color: #ff4655;
+  --secondary-color: #0f1923;
+  --accent-color: #ece8e1;
+  --text-color: #383e3a;
+  --card-bg: #f9f9f9;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6;
+  color: var(--text-color);
+  background-color: #f5f5f5;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+header {
+  margin-bottom: 3rem;
+  text-align: center;
+}
+
+h1 {
+  color: var(--secondary-color);
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.accent-line {
+  height: 5px;
+  width: 100px;
+  background-color: var(--primary-color);
+  margin: 0 auto;
+}
+
+h2 {
+  color: var(--secondary-color);
+  margin-bottom: 2rem;
+  font-size: 1.8rem;
+  border-bottom: 2px solid var(--primary-color);
+  padding-bottom: 0.5rem;
+  display: inline-block;
+}
+
+.api-section {
+  margin-bottom: 3rem;
+}
+
+.endpoint-card {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.endpoint-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+.endpoint-card h3 {
+  color: var(--secondary-color);
+  margin-bottom: 0.5rem;
+  font-size: 1.3rem;
+}
+
+.endpoint-card p {
+  margin-bottom: 1rem;
+  color: #666;
+}
+
+.endpoint-url {
+  background-color: var(--secondary-color);
+  padding: 0.8rem 1rem;
+  border-radius: 4px;
+  margin-top: 1rem;
+}
+
+.endpoint-url a {
+  color: white;
+  text-decoration: none;
+  font-family: monospace;
+  font-size: 1rem;
+  display: block;
+}
+
+.endpoint-url a:hover {
+  color: var(--primary-color);
+}
+
+footer {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ddd;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+} 
