@@ -16,10 +16,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "joi": "^17.13.3"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
   }
-} 
+}
