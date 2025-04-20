@@ -65,9 +65,10 @@ app.post('/api/compositions', (req, res) => {
     ? Math.max(...compositions.map(comp => comp.id)) + 1 
     : 1;
   
-  // Create the new composition with ID
+  // Create the new composition with ID and type
   const newComposition = {
     id: newId,
+    type: 'user', // Mark as user-created
     ...value
   };
   
@@ -80,6 +81,18 @@ app.post('/api/compositions', (req, res) => {
     message: 'Composition added successfully',
     composition: newComposition
   });
+});
+
+// GET endpoint for user-created compositions
+app.get('/api/user/compositions', (req, res) => {
+  const userComps = compositions.filter(comp => comp.type === 'user');
+  res.json(userComps);
+});
+
+// GET endpoint for recommended compositions (those without type: 'user')
+app.get('/api/recommended/compositions', (req, res) => {
+  const recommendedComps = compositions.filter(comp => comp.type !== 'user');
+  res.json(recommendedComps);
 });
 
 // PUT endpoint to update an existing composition
