@@ -82,6 +82,56 @@ app.post('/api/compositions', (req, res) => {
   });
 });
 
+// PUT endpoint to update an existing composition
+app.put('/api/compositions/:id', (req, res) => {
+  const compositionId = parseInt(req.params.id);
+  const compositionIndex = compositions.findIndex(comp => comp.id === compositionId);
+
+  if (compositionIndex === -1) {
+    return res.status(404).json({ success: false, message: 'Composition not found' });
+  }
+
+  // Validate the request body
+  const { error, value } = compositionSchema.validate(req.body);
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: error.details.map(detail => detail.message)
+    });
+  }
+
+  // Update the composition (preserving the original ID)
+  const updatedComposition = {
+    id: compositionId,
+    ...value
+  };
+  
+  compositions[compositionIndex] = updatedComposition;
+
+  res.json({
+    success: true,
+    message: 'Composition updated successfully',
+    composition: updatedComposition
+  });
+});
+
+// DELETE endpoint to remove a composition
+app.delete('/api/compositions/:id', (req, res) => {
+  const compositionId = parseInt(req.params.id);
+  const compositionIndex = compositions.findIndex(comp => comp.id === compositionId);
+
+  if (compositionIndex === -1) {
+    return res.status(404).json({ success: false, message: 'Composition not found' });
+  }
+
+  // Remove the composition from the array
+  compositions.splice(compositionIndex, 1);
+
+  res.json({ success: true, message: 'Composition deleted successfully' });
+});
+
 // Serve the index.html file
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
