@@ -115,10 +115,14 @@ app.put('/api/compositions/:id', (req, res) => {
     });
   }
 
-  // Update the composition (preserving the original ID)
+  // Keep the original composition to preserve fields like 'type'
+  const originalComposition = compositions[compositionIndex];
+
+  // Update the composition, preserving original type and ID
   const updatedComposition = {
-    id: compositionId,
-    ...value
+    ...originalComposition, // Spread original first to keep type
+    ...value, // Spread validated updates, overwriting fields except id and type
+    id: compositionId // Ensure ID remains the same
   };
   
   compositions[compositionIndex] = updatedComposition;
