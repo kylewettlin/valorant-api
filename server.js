@@ -2,7 +2,38 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const Joi = require('joi');
-const compositions = require('./data/compositions');
+const mongoose = require('mongoose');
+// const compositions = require('./data/compositions'); // No longer using in-memory data
+
+// --- MongoDB Connection ---
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/valorantComps';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('MongoDB connected successfully.'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// --- Mongoose Schema and Model ---
+const agentSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  role: { type: String, required: true, enum: ['Duelist', 'Controller', 'Initiator', 'Sentinel'] },
+  main_image: { type: String } // Assuming this is a URL or identifier, keep optional for now unless req changes
+}, { _id: false }); // Prevent Mongoose from creating _id for subdocuments
+
+const compositionMongooseSchema = new mongoose.Schema({
+  name: { type: String, required: true, minlength: 3, maxlength: 50 },
+  map: { type: String, required: true },
+  agents: {
+    type: [agentSchema],
+    required: true,
+    validate: [val => val.length >= 1 && val.length <= 5, 'Must have between 1 and 5 agents']
+  },
+  strategy: { type: String, required: true, minlength: 10, maxlength: 200 },
+  difficulty: { type: String, required: true, enum: ['Easy', 'Medium', 'Hard'] },
+  imageUrl: { type: String, required: true }, // Added required image URL
+  type: { type: String, enum: ['user', 'recommended'], default: 'recommended' } // To distinguish user vs seeded data
+}, { timestamps: true }); // Add createdAt and updatedAt timestamps
+
+const Composition = mongoose.model('Composition', compositionMongooseSchema);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,11 +51,12 @@ const compositionSchema = Joi.object({
     Joi.object({
       name: Joi.string().required(),
       role: Joi.string().required().valid('Duelist', 'Controller', 'Initiator', 'Sentinel'),
-      main_image: Joi.string().optional()
+      // main_image removed, relying on top-level imageUrl
     })
   ).min(1).max(5).required(),
   strategy: Joi.string().required().min(10).max(200),
-  difficulty: Joi.string().required().valid('Easy', 'Medium', 'Hard')
+  difficulty: Joi.string().required().valid('Easy', 'Medium', 'Hard'),
+  imageUrl: Joi.string().uri().required() // Add required image URL validation
 });
 
 // Routes
@@ -32,26 +64,38 @@ app.get('/api/compositions', (req, res) => {
   res.json(compositions);
 });
 
-app.get('/api/compositions/:id', (req, res) => {
-  const composition = compositions.find(comp => comp.id === parseInt(req.params.id));
-  
-  if (!composition) {
-    return res.status(404).json({ message: 'Composition not found' });
+app.get('/api/compositions/:id', async (req, res) => {
+  try {
+    const composition = await Composition.findById(req.params.id);
+    if (!composition) {
+      return res.status(404).json({ success: false, message: 'Composition not found' });
+    }
+    res.json(composition);
+  } catch (error) {
+     // Handle potential CastError if ID format is invalid for MongoDB ObjectId
+    if (error.name === 'CastError') {
+        return res.status(400).json({ success: false, message: 'Invalid Composition ID format' });
+    }
+    console.error("Error fetching composition by ID:", error);
+    res.status(500).json({ success: false, message: 'Error fetching composition' });
   }
-  
-  res.json(composition);
 });
 
-app.get('/api/maps', (req, res) => {
-  const maps = [...new Set(compositions.map(comp => comp.map))];
-  res.json(maps);
+app.get('/api/maps', async (req, res) => {
+  try {
+    // Fetch distinct map values directly from the database
+    const maps = await Composition.distinct('map');
+    res.json(maps);
+  } catch (error) {
+    console.error("Error fetching maps:", error);
+    res.status(500).json({ success: false, message: 'Error fetching maps' });
+  }
 });
 
 // POST endpoint to add a new composition
-app.post('/api/compositions', (req, res) => {
+app.post('/api/compositions', async (req, res) => {
   // Validate the request body
   const { error, value } = compositionSchema.validate(req.body);
-  
   if (error) {
     return res.status(400).json({ 
       success: false,
@@ -60,53 +104,63 @@ app.post('/api/compositions', (req, res) => {
     });
   }
   
-  // Generate a new ID (simple approach: max existing ID + 1)
-  const newId = compositions.length > 0 
-    ? Math.max(...compositions.map(comp => comp.id)) + 1 
-    : 1;
-  
-  // Create the new composition with ID and type
-  const newComposition = {
-    id: newId,
-    type: 'user', // Mark as user-created
-    ...value
-  };
-  
-  // Add to compositions array
-  compositions.push(newComposition);
-  
-  // Return success response with the new composition
-  res.status(201).json({ 
-    success: true,
-    message: 'Composition added successfully',
-    composition: newComposition
-  });
+  try {
+    // Create new composition document, explicitly setting type to 'user'
+    const newCompositionData = {
+      ...value,
+      type: 'user' // Ensure new comps are marked as user-created
+    };
+    const newComposition = new Composition(newCompositionData);
+    await newComposition.save(); // Save to database
+    
+    // Return success response with the new composition (including _id from DB)
+    res.status(201).json({ 
+      success: true,
+      message: 'Composition added successfully',
+      composition: newComposition 
+    });
+  } catch (dbError) {
+    console.error("Error saving new composition:", dbError);
+    // Handle potential Mongoose validation errors
+    if (dbError.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: 'Database validation failed',
+            errors: Object.values(dbError.errors).map(e => e.message)
+        });
+    }
+    res.status(500).json({ success: false, message: 'Error saving composition to database' });
+  }
+});
+
+// GET endpoint for recommended compositions
+app.get('/api/recommended/compositions', async (req, res) => {
+  try {
+    const recommendedComps = await Composition.find({ type: 'recommended' });
+    res.json(recommendedComps);
+  } catch (error) {
+    console.error("Error fetching recommended compositions:", error);
+    res.status(500).json({ success: false, message: 'Error fetching recommended compositions' });
+  }
 });
 
 // GET endpoint for user-created compositions
-app.get('/api/user/compositions', (req, res) => {
-  const userComps = compositions.filter(comp => comp.type === 'user');
-  res.json(userComps);
-});
-
-// GET endpoint for recommended compositions (those without type: 'user')
-app.get('/api/recommended/compositions', (req, res) => {
-  const recommendedComps = compositions.filter(comp => comp.type !== 'user');
-  res.json(recommendedComps);
+app.get('/api/user/compositions', async (req, res) => {
+  try {
+    const userComps = await Composition.find({ type: 'user' });
+    res.json(userComps);
+  } catch (error) {
+    console.error("Error fetching user compositions:", error);
+    res.status(500).json({ success: false, message: 'Error fetching user compositions' });
+  }
 });
 
 // PUT endpoint to update an existing composition
-app.put('/api/compositions/:id', (req, res) => {
-  const compositionId = parseInt(req.params.id);
-  const compositionIndex = compositions.findIndex(comp => comp.id === compositionId);
+app.put('/api/compositions/:id', async (req, res) => {
+  const { id } = req.params;
 
-  if (compositionIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Composition not found' });
-  }
-
-  // Validate the request body
+  // Validate the request body first
   const { error, value } = compositionSchema.validate(req.body);
-
   if (error) {
     return res.status(400).json({
       success: false,
@@ -115,38 +169,63 @@ app.put('/api/compositions/:id', (req, res) => {
     });
   }
 
-  // Keep the original composition to preserve fields like 'type'
-  const originalComposition = compositions[compositionIndex];
+  try {
+    // Find and update the composition in the database
+    // { new: true } returns the updated document
+    // value already contains the validated fields including imageUrl
+    const updatedComposition = await Composition.findByIdAndUpdate(
+      id, 
+      value, // Use the validated 'value' which includes all fields from Joi schema
+      { new: true, runValidators: true } // Return updated doc & run Mongoose validators
+    );
 
-  // Update the composition, preserving original type and ID
-  const updatedComposition = {
-    ...originalComposition, // Spread original first to keep type
-    ...value, // Spread validated updates, overwriting fields except id and type
-    id: compositionId // Ensure ID remains the same
-  };
-  
-  compositions[compositionIndex] = updatedComposition;
+    if (!updatedComposition) {
+      return res.status(404).json({ success: false, message: 'Composition not found' });
+    }
 
-  res.json({
-    success: true,
-    message: 'Composition updated successfully',
-    composition: updatedComposition
-  });
+    res.json({
+      success: true,
+      message: 'Composition updated successfully',
+      composition: updatedComposition
+    });
+  } catch (dbError) {
+     // Handle potential CastError if ID format is invalid
+    if (dbError.name === 'CastError') {
+        return res.status(400).json({ success: false, message: 'Invalid Composition ID format' });
+    }
+    // Handle potential Mongoose validation errors during update
+    if (dbError.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: 'Database validation failed during update',
+            errors: Object.values(dbError.errors).map(e => e.message)
+        });
+    }
+    console.error("Error updating composition:", dbError);
+    res.status(500).json({ success: false, message: 'Error updating composition in database' });
+  }
 });
 
 // DELETE endpoint to remove a composition
-app.delete('/api/compositions/:id', (req, res) => {
-  const compositionId = parseInt(req.params.id);
-  const compositionIndex = compositions.findIndex(comp => comp.id === compositionId);
+app.delete('/api/compositions/:id', async (req, res) => {
+  const { id } = req.params;
 
-  if (compositionIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Composition not found' });
+  try {
+    const deletedComposition = await Composition.findByIdAndDelete(id);
+
+    if (!deletedComposition) {
+      return res.status(404).json({ success: false, message: 'Composition not found' });
+    }
+
+    res.json({ success: true, message: 'Composition deleted successfully' });
+  } catch (dbError) {
+     // Handle potential CastError if ID format is invalid
+    if (dbError.name === 'CastError') {
+        return res.status(400).json({ success: false, message: 'Invalid Composition ID format' });
+    }
+    console.error("Error deleting composition:", dbError);
+    res.status(500).json({ success: false, message: 'Error deleting composition from database' });
   }
-
-  // Remove the composition from the array
-  compositions.splice(compositionIndex, 1);
-
-  res.json({ success: true, message: 'Composition deleted successfully' });
 });
 
 // Serve the index.html file
